@@ -1,19 +1,21 @@
 package com.songoda.epicfurnaces;
 
-import com.songoda.core.SongodaCore;
-import com.songoda.core.SongodaPlugin;
-import com.songoda.core.commands.CommandManager;
-import com.songoda.core.compatibility.CompatibleMaterial;
-import com.songoda.core.configuration.Config;
-import com.songoda.core.database.DataMigrationManager;
-import com.songoda.core.database.DatabaseConnector;
-import com.songoda.core.database.MySQLConnector;
-import com.songoda.core.database.SQLiteConnector;
-import com.songoda.core.gui.GuiManager;
-import com.songoda.core.hooks.EconomyManager;
-import com.songoda.core.hooks.HologramManager;
-import com.songoda.core.hooks.ProtectionManager;
-import com.songoda.core.third_party.de.tr7zw.nbtapi.NBTItem;
+import com.craftaro.core.SongodaCore;
+import com.craftaro.core.SongodaPlugin;
+import com.craftaro.core.commands.CommandManager;
+import com.craftaro.core.compatibility.CompatibleMaterial;
+import com.craftaro.core.configuration.Config;
+import com.craftaro.core.database.DataMigrationManager;
+import com.craftaro.core.database.DatabaseConnector;
+import com.craftaro.core.database.MySQLConnector;
+import com.craftaro.core.database.SQLiteConnector;
+import com.craftaro.core.gui.GuiManager;
+import com.craftaro.core.hooks.EconomyManager;
+import com.craftaro.core.hooks.HologramManager;
+import com.craftaro.core.hooks.ProtectionManager;
+import com.craftaro.core.third_party.com.cryptomorin.xseries.XMaterial;
+import com.craftaro.core.third_party.de.tr7zw.nbtapi.NBTItem;
+import com.craftaro.core.utils.TextUtils;
 import com.songoda.epicfurnaces.boost.BoostData;
 import com.songoda.epicfurnaces.boost.BoostManager;
 import com.songoda.epicfurnaces.commands.CommandBoost;
@@ -65,8 +67,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class EpicFurnaces extends SongodaPlugin {
-    private static EpicFurnaces INSTANCE;
-
     private final Config furnaceRecipeFile = new Config(this, "Furnace Recipes.yml");
     private final Config levelsFile = new Config(this, "levels.yml");
 
@@ -81,13 +81,16 @@ public class EpicFurnaces extends SongodaPlugin {
     private DatabaseConnector databaseConnector;
     private DataManager dataManager;
 
+    /**
+     * @deprecated Use {@link #getPlugin(Class)} instead
+     */
+    @Deprecated
     public static EpicFurnaces getInstance() {
-        return INSTANCE;
+        return EpicFurnaces.getPlugin(EpicFurnaces.class);
     }
 
     @Override
     public void onPluginLoad() {
-        INSTANCE = this;
     }
 
     @Override
@@ -101,7 +104,7 @@ public class EpicFurnaces extends SongodaPlugin {
     @Override
     public void onPluginEnable() {
         // Run Songoda Updater
-        SongodaCore.registerPlugin(this, 22, CompatibleMaterial.FURNACE);
+        SongodaCore.registerPlugin(this, 22, XMaterial.FURNACE);
 
         // Load Economy
         EconomyManager.load();
@@ -132,14 +135,14 @@ public class EpicFurnaces extends SongodaPlugin {
                         new CommandGive(this),
                         new CommandReload(this),
                         new CommandRemote(this),
-                        new CommandSettings(this, guiManager)
+                        new CommandSettings(this, this.guiManager)
                 );
 
         loadLevelManager();
 
         this.furnaceManager = new FurnaceManager();
-        this.boostManager = new BoostManager();
-        this.blacklistHandler = new BlacklistHandler();
+        this.boostManager = new BoostManager(this);
+        this.blacklistHandler = new BlacklistHandler(this);
 
         // Database stuff.
         try {
@@ -165,7 +168,7 @@ public class EpicFurnaces extends SongodaPlugin {
 
         this.dataManager = new DataManager(this.databaseConnector, this);
         DataMigrationManager dataMigrationManager = new DataMigrationManager(this.databaseConnector, this.dataManager,
-                new _1_InitialMigration());
+                new _1_InitialMigration(this));
         dataMigrationManager.runMigrations();
 
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
@@ -178,7 +181,7 @@ public class EpicFurnaces extends SongodaPlugin {
                 converted = true;
                 Storage storage = new StorageYaml(this);
                 if (storage.containsGroup("charged")) {
-                    console.sendMessage("[" + getDescription().getName() + "] " + ChatColor.RED +
+                    Bukkit.getConsoleSender().sendMessage("[" + getDescription().getName() + "] " + ChatColor.RED +
                             "Conversion process starting. Do NOT turn off your server." +
                             "EpicFurnaces hasn't fully loaded yet, so make sure users don't" +
                             "interact with the plugin until the conversion process is complete.");
@@ -186,48 +189,54 @@ public class EpicFurnaces extends SongodaPlugin {
                     List<Furnace> furnaces = new ArrayList<>();
                     for (StorageRow row : storage.getRowsByGroup("charged")) {
                         Location location = Methods.unserializeLocation(row.getKey());
-                        if (location == null) continue;
+                        if (location == null) {
+                            continue;
+                        }
 
-                        if (row.get("level").asInt() == 0) continue;
+                        if (row.get("level").asInt() == 0) {
+                            continue;
+                        }
 
                         String placedByStr = row.get("placedby").asString();
                         UUID placedBy = placedByStr == null ? null : UUID.fromString(placedByStr);
 
                         List<String> list = row.get("accesslist").asStringList();
                         if (!list.isEmpty()) {
-                            for (String uuid : new ArrayList<>(list))
+                            for (String uuid : new ArrayList<>(list)) {
                                 if (uuid.contains(":")) {
                                     list = new ArrayList<>();
                                     break;
                                 }
+                            }
                         }
                         List<UUID> usableList = list.stream().map(UUID::fromString).collect(Collectors.toList());
 
-                        Map<CompatibleMaterial, Integer> toLevel = new HashMap<>();
+                        Map<XMaterial, Integer> toLevel = new HashMap<>();
                         List<String> toLevelCompiled = row.get("tolevelnew").asStringList();
                         for (String line : toLevelCompiled) {
                             String[] split = line.split(":");
-                            toLevel.put(CompatibleMaterial.getMaterial(split[0]), Integer.parseInt(split[1]));
+                            toLevel.put(CompatibleMaterial.getMaterial(split[0]).get(), Integer.parseInt(split[1]));
                         }
 
                         furnaces.add(new FurnaceBuilder(location)
-                                .setLevel(levelManager.getLevel(row.get("level").asInt()))
+                                .setLevel(this.levelManager.getLevel(row.get("level").asInt()))
                                 .setNickname(row.get("nickname").asString())
                                 .setUses(row.get("uses").asInt())
                                 .setToLevel(toLevel)
                                 .setAccessList(usableList)
                                 .setPlacedBy(placedBy).build());
                     }
-                    dataManager.createFurnaces(furnaces);
+                    this.dataManager.createFurnaces(furnaces);
                 }
 
                 // Adding in Boosts
                 if (storage.containsGroup("boosts")) {
                     for (StorageRow row : storage.getRowsByGroup("boosts")) {
-                        if (row.get("uuid").asObject() == null)
+                        if (row.get("uuid").asObject() == null) {
                             continue;
+                        }
 
-                        dataManager.createBoost(new BoostData(
+                        this.dataManager.createBoost(new BoostData(
                                 row.get("amount").asInt(),
                                 Long.parseLong(row.getKey()),
                                 UUID.fromString(row.get("uuid").asString())));
@@ -237,9 +246,9 @@ public class EpicFurnaces extends SongodaPlugin {
             }
 
             final boolean finalConverted = converted;
-            dataManager.runAsync(() -> {
+            this.dataManager.runAsync(() -> {
                 if (finalConverted) {
-                    console.sendMessage("[" + getDescription().getName() + "] " + ChatColor.GREEN + "Conversion complete :)");
+                    Bukkit.getConsoleSender().sendMessage("[" + getDescription().getName() + "] " + ChatColor.GREEN + "Conversion complete :)");
                 }
 
                 this.dataManager.getFurnaces((furnaces) -> {
@@ -249,18 +258,18 @@ public class EpicFurnaces extends SongodaPlugin {
             });
         });
 
-        setupRecipies();
+        setupRecipes();
 
         // Start Tasks
         FurnaceTask.startTask(this);
         HologramTask.startTask(this);
 
         // Register Listeners
-        guiManager.init();
+        this.guiManager.init();
         PluginManager pluginManager = Bukkit.getPluginManager();
         pluginManager.registerEvents(new BlockListeners(this), this);
         pluginManager.registerEvents(new FurnaceListeners(this), this);
-        pluginManager.registerEvents(new InteractListeners(this, guiManager), this);
+        pluginManager.registerEvents(new InteractListeners(this, this.guiManager), this);
         pluginManager.registerEvents(new InventoryListeners(this), this);
         pluginManager.registerEvents(new EntityListeners(this), this);
     }
@@ -279,7 +288,7 @@ public class EpicFurnaces extends SongodaPlugin {
 
     @Override
     public List<Config> getExtraConfig() {
-        return Collections.singletonList(levelsFile);
+        return Collections.singletonList(this.levelsFile);
     }
 
     public void clearHologram(Furnace furnace) {
@@ -288,18 +297,24 @@ public class EpicFurnaces extends SongodaPlugin {
 
     public void updateHolograms(Collection<Furnace> furnaces) {
         // are holograms enabled?
-        if (!Settings.HOLOGRAMS.getBoolean() || !HologramManager.getManager().isEnabled()) return;
+        if (!Settings.HOLOGRAMS.getBoolean() || !HologramManager.getManager().isEnabled()) {
+            return;
+        }
 
         Map<String, List<String>> holograms = new HashMap<>();
 
         for (Furnace furnace : furnaces) {
             // don't try to load furnaces in chunks that aren't loaded
-            if (!furnace.isInLoadedChunk()) continue;
+            if (!furnace.isInLoadedChunk()) {
+                continue;
+            }
 
             BlockState state = furnace.getLocation().getBlock().getState();
 
             // verify that this is a furnace
-            if (!(state instanceof org.bukkit.block.Furnace)) continue;
+            if (!(state instanceof org.bukkit.block.Furnace)) {
+                continue;
+            }
 
             org.bukkit.block.Furnace furnaceBlock = ((org.bukkit.block.Furnace) state);
 
@@ -320,7 +335,7 @@ public class EpicFurnaces extends SongodaPlugin {
                     sb.append("&c=");
                 }
 
-                progress = Methods.formatText(sb.toString());
+                progress = TextUtils.formatText(sb.toString());
             } else {
                 progress = getLocale().getMessage("general.hologram.outoffuel").getMessage();
             }
@@ -352,22 +367,23 @@ public class EpicFurnaces extends SongodaPlugin {
     }
 
     private void loadLevelManager() {
-        if (!levelsFile.getFile().exists())
+        if (!this.levelsFile.getFile().exists()) {
             this.saveResource("levels.yml", false);
-        levelsFile.load();
+        }
+        this.levelsFile.load();
 
-        // Load an plugin of LevelManager
-        levelManager = new LevelManager();
+        // Load a plugin of LevelManager
+        this.levelManager = new LevelManager();
         /*
          * Register Levels into LevelManager from configuration.
          */
-        levelManager.clear();
-        for (String levelName : levelsFile.getKeys(false)) {
+        this.levelManager.clear();
+        for (String levelName : this.levelsFile.getKeys(false)) {
             int level = Integer.parseInt(levelName.split("-")[1]);
 
-            ConfigurationSection levels = levelsFile.getConfigurationSection(levelName);
+            ConfigurationSection levels = this.levelsFile.getConfigurationSection(levelName);
 
-            int costExperiance = levels.getInt("Cost-xp");
+            int costExperience = levels.getInt("Cost-xp");
             int costEconomy = levels.getInt("Cost-eco");
 
             String performanceStr = levels.getString("Performance");
@@ -381,31 +397,31 @@ public class EpicFurnaces extends SongodaPlugin {
             int overheat = levels.getInt("Overheat");
             int fuelShare = levels.getInt("Fuel-share");
 
-            Map<CompatibleMaterial, Integer> materials = new LinkedHashMap<>();
+            Map<XMaterial, Integer> materials = new LinkedHashMap<>();
             if (levels.contains("Cost-item")) {
                 for (String materialStr : levels.getStringList("Cost-item")) {
                     String[] materialSplit = materialStr.split(":");
-                    materials.put(CompatibleMaterial.getMaterial(materialSplit[0]), Integer.parseInt(materialSplit[1]));
+                    materials.put(CompatibleMaterial.getMaterial(materialSplit[0]).get(), Integer.parseInt(materialSplit[1]));
                 }
             }
 
-            levelManager.addLevel(level, costExperiance, costEconomy, performance, reward, fuelDuration, overheat, fuelShare, materials);
+            this.levelManager.addLevel(level, costExperience, costEconomy, performance, reward, fuelDuration, overheat, fuelShare, materials);
         }
     }
 
-    private void setupRecipies() {
+    private void setupRecipes() {
         File config = new File(getDataFolder(), "Furnace Recipes.yml");
         if (!config.exists()) {
             saveResource("Furnace Recipes.yml", false);
         }
-        furnaceRecipeFile.load();
+        this.furnaceRecipeFile.load();
 
         if (Settings.CUSTOM_RECIPES.getBoolean()) {
-            ConfigurationSection cs = furnaceRecipeFile.getConfigurationSection("Recipes");
+            ConfigurationSection cs = this.furnaceRecipeFile.getConfigurationSection("Recipes");
             for (String key : cs.getKeys(false)) {
                 Material item = Material.valueOf(key.toUpperCase());
-                Material result = Material.valueOf(furnaceRecipeFile.getString("Recipes." + key.toUpperCase() + ".result"));
-                int amount = furnaceRecipeFile.getInt("Recipes." + key.toUpperCase() + ".amount");
+                Material result = Material.valueOf(this.furnaceRecipeFile.getString("Recipes." + key.toUpperCase() + ".result"));
+                int amount = this.furnaceRecipeFile.getInt("Recipes." + key.toUpperCase() + ".amount");
 
                 getServer().addRecipe(new FurnaceRecipe(new ItemStack(result, amount), item));
             }
@@ -415,7 +431,7 @@ public class EpicFurnaces extends SongodaPlugin {
     public boolean isLeveledFurnace(ItemStack itemStack) {
         NBTItem nbtItem = new NBTItem(itemStack);
 
-        return nbtItem.hasKey("level") && nbtItem.hasKey("uses");
+        return nbtItem.hasTag("level") && nbtItem.hasTag("uses");
     }
 
     public ItemStack createLeveledFurnace(Material material, int level, int uses) {
@@ -423,7 +439,7 @@ public class EpicFurnaces extends SongodaPlugin {
 
         if (Settings.FURNACE_ITEM.getBoolean()) {
             ItemMeta itemmeta = item.getItemMeta();
-            itemmeta.setDisplayName(Methods.formatText(Methods.formatName(level)));
+            itemmeta.setDisplayName(TextUtils.formatText(Methods.formatName(level)));
             item.setItemMeta(itemmeta);
         }
 
@@ -437,8 +453,9 @@ public class EpicFurnaces extends SongodaPlugin {
     public int getFurnaceLevel(ItemStack item) {
         NBTItem nbtItem = new NBTItem(item);
 
-        if (nbtItem.hasKey("level"))
+        if (nbtItem.hasTag("level")) {
             return nbtItem.getInteger("level");
+        }
 
         // Legacy trash.
         if (item.getItemMeta().getDisplayName().contains(":")) {
@@ -452,8 +469,9 @@ public class EpicFurnaces extends SongodaPlugin {
     public int getFurnaceUses(ItemStack item) {
         NBTItem nbtItem = new NBTItem(item);
 
-        if (nbtItem.hasKey("uses"))
+        if (nbtItem.hasTag("uses")) {
             return nbtItem.getInteger("uses");
+        }
 
         // Legacy trash.
         if (item.getItemMeta().getDisplayName().contains(":")) {
@@ -465,34 +483,34 @@ public class EpicFurnaces extends SongodaPlugin {
     }
 
     public Config getFurnaceRecipeFile() {
-        return furnaceRecipeFile;
+        return this.furnaceRecipeFile;
     }
 
     public CommandManager getCommandManager() {
-        return commandManager;
+        return this.commandManager;
     }
 
     public BoostManager getBoostManager() {
-        return boostManager;
+        return this.boostManager;
     }
 
     public BlacklistHandler getBlacklistHandler() {
-        return blacklistHandler;
+        return this.blacklistHandler;
     }
 
     public FurnaceManager getFurnaceManager() {
-        return furnaceManager;
+        return this.furnaceManager;
     }
 
     public LevelManager getLevelManager() {
-        return levelManager;
+        return this.levelManager;
     }
 
     public DatabaseConnector getDatabaseConnector() {
-        return databaseConnector;
+        return this.databaseConnector;
     }
 
     public DataManager getDataManager() {
-        return dataManager;
+        return this.dataManager;
     }
 }

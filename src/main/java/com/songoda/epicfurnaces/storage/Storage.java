@@ -1,7 +1,7 @@
 package com.songoda.epicfurnaces.storage;
 
-import com.songoda.core.compatibility.CompatibleMaterial;
-import com.songoda.core.configuration.Config;
+import com.craftaro.core.configuration.Config;
+import com.craftaro.core.third_party.com.cryptomorin.xseries.XMaterial;
 import com.songoda.epicfurnaces.EpicFurnaces;
 import com.songoda.epicfurnaces.boost.BoostData;
 import com.songoda.epicfurnaces.furnace.Furnace;
@@ -14,10 +14,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public abstract class Storage {
-
     protected final EpicFurnaces plugin;
     protected final Config dataFile;
-
 
     public Storage(EpicFurnaces plugin) {
         this.plugin = plugin;
@@ -39,12 +37,15 @@ public abstract class Storage {
             if (furnace == null
                     || furnace.getLocation() == null
                     || furnace.getLocation().getWorld() == null
-                    || furnace.getLevel() == null) continue;
+                    || furnace.getLevel() == null) {
+                continue;
+            }
             String locationStr = Methods.serializeLocation(furnace.getLocation());
 
             List<String> toLevel = new ArrayList<>();
-            for (Map.Entry<CompatibleMaterial, Integer> entry : furnace.getToLevel().entrySet())
+            for (Map.Entry<XMaterial, Integer> entry : furnace.getToLevel().entrySet()) {
                 toLevel.add(entry.getKey().name() + ":" + entry.getValue());
+            }
 
             prepareSaveItem("charged", new StorageItem("location", locationStr),
                     new StorageItem("level", furnace.getLevel().getLevel()),
@@ -72,5 +73,4 @@ public abstract class Storage {
     public abstract void makeBackup();
 
     public abstract void closeConnection();
-
 }

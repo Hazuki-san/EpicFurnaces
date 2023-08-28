@@ -1,8 +1,8 @@
 package com.songoda.epicfurnaces.commands;
 
-import com.songoda.core.commands.AbstractCommand;
-import com.songoda.core.configuration.editor.PluginConfigGui;
-import com.songoda.core.gui.GuiManager;
+import com.craftaro.core.commands.AbstractCommand;
+import com.craftaro.core.configuration.editor.PluginConfigGui;
+import com.craftaro.core.gui.GuiManager;
 import com.songoda.epicfurnaces.EpicFurnaces;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -10,7 +10,6 @@ import org.bukkit.entity.Player;
 import java.util.List;
 
 public class CommandSettings extends AbstractCommand {
-
     private final EpicFurnaces plugin;
     private final GuiManager guiManager;
 
@@ -22,12 +21,12 @@ public class CommandSettings extends AbstractCommand {
 
     @Override
     protected ReturnType runCommand(CommandSender sender, String... args) {
-        guiManager.showGUI((Player) sender, new PluginConfigGui(plugin));
+        this.guiManager.showGUI((Player) sender, new PluginConfigGui(this.plugin));
         return ReturnType.SUCCESS;
     }
 
     @Override
-    protected List<String> onTab(CommandSender commandSender, String... strings) {
+    protected List<String> onTab(CommandSender sender, String... args) {
         return null;
     }
 

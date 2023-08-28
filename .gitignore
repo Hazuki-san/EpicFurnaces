@@ -1,5 +1,10 @@
-out/
-.idea/
+## JetBrains IDEs
+/.idea/
 *.iml
-META-INF/
-target/
+
+## Maven
+/**/target/
+/dependency-reduced-pom.xml
+
+## Misc.
+.DS_Store
